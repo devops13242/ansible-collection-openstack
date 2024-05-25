@@ -1,0 +1,155 @@
+---
+- name: Add group keystone
+  become: true
+  become_user: root
+  ansible.builtin.group:
+    name: keystone
+    state: present
+
+- name: Add the user keystone
+  become: true
+  become_user: root
+  ansible.builtin.user:
+    name: keystone
+    group: keystone
+    system: true
+
+- name: Install python3-pymysql
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: python3-pymysql
+    state: present
+
+- name: Create a new dastabase with name 'keystone'
+  community.mysql.mysql_db:
+    name: keystone
+    state: present
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+  retries: 3
+  delay: 3
+
+- name: Create a 'keystone'@'localhost' user with password, all database privileges and 'WITH GRANT OPTION' in keystone
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY '{{ KEYSTONE_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a 'keystone'@'%' user with password, all database privileges and 'WITH GRANT OPTION' in keystone
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '{{ KEYSTONE_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Flush privileges for keystone
+  community.mysql.mysql_query:
+    query: "FLUSH PRIVILEGES;"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Git checkout keystone
+  become: true
+  become_user: root
+  ansible.builtin.git:
+    repo: https://github.com/openstack/keystone.git
+    dest: /opt/openstack/git/keystone
+    version: 25.0.0
+
+- name: install dependencies
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/keystone
+    requirements: /opt/openstack/git/keystone/requirements.txt
+
+- name: install PyMySQL
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/keystone
+    name:
+      - PyMySQL
+
+- name: Install keystone
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    name: git+https://github.com/openstack/keystone.git@25.0.0
+    virtualenv: /opt/openstack/keystone
+
+- name: Creates directory /etc/keystone
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /etc/keystone
+    state: directory
+
+- name: Create /etc/keystone/keystone.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/keystone.conf"
+    dest: /etc/keystone/keystone.conf
+    mode: '0444'
+
+- name: Exec keystone-manage db_sync
+  become: true
+  become_user: root 
+  command: /opt/openstack/keystone/bin/keystone-manage db_sync
+
+- name: Exec keystone-manage fernet_setup
+  become: true
+  become_user: root 
+  command: /opt/openstack/keystone/bin/keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+
+- name: Exec keystone-manage credential_setup
+  become: true
+  become_user: root 
+  command: /opt/openstack/keystone/bin/keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+
+- name: Exec keystone-manage bootstrap
+  become: true
+  become_user: root 
+  command: "/opt/openstack/keystone/bin/keystone-manage bootstrap --bootstrap-password {{ADMIN_PASSWORD}} --bootstrap-admin-url http://keystone:5000/v3/ --bootstrap-internal-url http://keystone:5000/v3/ --bootstrap-public-url http://localhost:5000/v3/ --bootstrap-region-id RegionOne"
+
+- name: Install apache2
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - apache2
+    - libapache2-mod-wsgi-py3
+
+- name: Create symbolic links
+  become: true
+  become_user: root
+  file:
+    src: "../mods-available/{{ item }}"
+    dest: "/etc/apache2/mods-enabled/{{ item }}"
+    state: link
+  with_items:
+    - wsgi.conf
+    - wsgi.load
+
+- name: Create /etc/apache2/sites-enabled/wsgi-keystone.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/wsgi-keystone.conf"
+    dest: /etc/apache2/sites-enabled/wsgi-keystone.conf
+    mode: '0444'
+
+- name: Start apache2 Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: apache2
+    state: started
+    enabled: true

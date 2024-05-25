@@ -1,0 +1,8 @@
+---
+- name: Install git
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: git
+    state: present
+

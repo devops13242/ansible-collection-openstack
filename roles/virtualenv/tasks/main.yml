@@ -1,0 +1,9 @@
+---
+- name: Install virtualenv
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: virtualenv
+    state: present
+
+  

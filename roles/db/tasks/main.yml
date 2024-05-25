@@ -1,0 +1,31 @@
+---
+- name: Install mariadb-server
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: mariadb-server
+    state: present
+
+- name: Start mariadb Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: mariadb
+    state: started
+    enabled: true
+
+- name: secure mariadb
+  become: true
+  become_user: root
+  expect:
+    command: mysql_secure_installation
+    responses:
+      'Enter current password for root': ''
+      'Change the root password?': 'y'
+      'New password:': "{{ MARIADB_ROOT_PASSWORD }}"
+      'Re-enter new password:': "{{ MARIADB_ROOT_PASSWORD }}"
+      'Switch to unix_socket authentication': 'y'
+      'Remove anonymous users?': 'y'
+      'Disallow root login remotely?': 'y'
+      'Remove test database and access to it?': 'y'
+      'Reload privilege tables now?': 'y'
