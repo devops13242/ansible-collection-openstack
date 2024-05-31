@@ -18,6 +18,7 @@
     NEUTRON_USER_PASSWORD: "{{ lookup('ansible.builtin.env', 'NEUTRON_USER_PASSWORD') }}"
     METADATA_SECRET: "{{ lookup('ansible.builtin.env', 'METADATA_SECRET') }}"
   roles:
+    - role: system
     - role: db
     - role: virtualenv
     - role: git

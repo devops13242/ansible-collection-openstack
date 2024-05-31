@@ -1,0 +1,7 @@
+---
+- name: Update and upgrade packages
+  become: true
+  become_user: root
+  apt:
+    upgrade: "yes"
+    update_cache: true
