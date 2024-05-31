@@ -5,3 +5,55 @@
   apt:
     upgrade: "yes"
     update_cache: true
+
+- name: Install python packages
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - python3-openstackclient
+    - python3-openstacksdk
+
+- name: Set environment variable OS_USERNAME
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_USERNAME'
+    line: export OS_USERNAME=admin
+
+- name: Set environment variable OS_PASSWORD
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_PASSWORD'
+    line: "export OS_PASSWORD={{ ADMIN_PASSWORD }}"
+
+- name: Set environment variable OS_PROJECT_NAME
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_PROJECT_NAME'
+    line: export OS_PROJECT_NAME=admin
+
+- name: Set environment variable OS_USER_DOMAIN_NAME
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_USER_DOMAIN_NAME'
+    line: export OS_USER_DOMAIN_NAME=Default
+
+- name: Set environment variable OS_PROJECT_DOMAIN_NAME
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_PROJECT_DOMAIN_NAME'
+    line: export OS_PROJECT_DOMAIN_NAME=Default
+
+- name: Set environment variable OS_AUTH_URL
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_AUTH_URL'
+    line: export OS_AUTH_URL=http://localhost:5000/v3
+
+- name: Set environment variable OS_IDENTITY_API_VERSION
+  ansible.builtin.lineinfile:
+    path: ~/.bashrc
+    regexp: '^export OS_IDENTITY_API_VERSION'
+    line: export OS_IDENTITY_API_VERSION=3

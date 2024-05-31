@@ -153,3 +153,19 @@
     name: apache2
     state: started
     enabled: true
+
+- name: Create a domain example
+  openstack.cloud.identity_domain:
+    state: present
+    name: example
+    description: An Example Domain
+  retries: 3
+  delay: 3
+
+- name: Create a project
+  openstack.cloud.project:
+    description: Service Project
+    domain: default
+    is_enabled: True
+    name: service
+    state: present
