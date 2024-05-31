@@ -31,3 +31,4 @@
     - role: virtualenv
     - role: git
     - role: keystone
+    - role: glance

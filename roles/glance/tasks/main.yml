@@ -1,0 +1,184 @@
+---
+- name: Add group glance
+  become: true
+  become_user: root
+  ansible.builtin.group:
+    name: glance
+    state: present
+
+- name: Add the user glance
+  become: true
+  become_user: root
+  ansible.builtin.user:
+    name: glance
+    group: glance
+    system: true
+
+- name: Git checkout glance
+  become: true
+  become_user: root
+  ansible.builtin.git:
+    repo: https://github.com/openstack/glance.git
+    dest: /opt/openstack/git/glance
+    version: 28.0.1
+
+- name: install dependencies
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/glance
+    requirements: /opt/openstack/git/glance/requirements.txt
+
+- name: install PyMySQL
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/glance
+    name:
+      - PyMySQL
+
+- name: Install glance
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    name: git+https://github.com/openstack/glance.git@28.0.1
+    virtualenv: /opt/openstack/glance
+
+- name: Create a new database with name 'glance'
+  community.mysql.mysql_db:
+    name: glance
+    state: present
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a 'glance'@'localhost' user
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'localhost' IDENTIFIED BY '{{ GLANCE_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a 'glance'@'%' user
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY '{{ GLANCE_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Flush privileges for glance
+  community.mysql.mysql_query:
+    query: "FLUSH PRIVILEGES;"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a user glance
+  openstack.cloud.identity_user:
+    state: present
+    name: glance
+    password: "{{ GLANCE_USER_PASSWORD }}"
+    domain: default
+
+- name: Grant an admin role on the user glance in the project service
+  openstack.cloud.role_assignment:
+    user: glance
+    role: admin
+    project: service
+
+- name: Create a service for glance
+  openstack.cloud.catalog_service:
+     state: present
+     name: glance
+     type: image
+     description: OpenStack Image
+
+- name: Create the Image service public
+  openstack.cloud.endpoint:
+     service: glance
+     endpoint_interface: public
+     url: http://localhost:9292
+     region: RegionOne
+     state: present
+  register: public_endpoint
+
+- name: Create the Image service internal
+  openstack.cloud.endpoint:
+     service: glance
+     endpoint_interface: internal
+     url: http://localhost:9292
+     region: RegionOne
+     state: present
+
+- name: Create the Image service admin
+  openstack.cloud.endpoint:
+     service: glance
+     endpoint_interface: admin
+     url: http://localhost:9292
+     region: RegionOne
+     state: present
+
+- name: Creates directory /etc/glance
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /etc/glance
+    state: directory
+    owner: glance
+    group: glance
+    mode: '0770'
+
+- name: Create /etc/glance/glance-api.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/glance-api.conf"
+    dest: /etc/glance/glance-api.conf
+    owner: glance
+    group: glance
+    mode: '0440'
+  vars:
+    GLANCE_ENDPOINT_ID: "{{ public_endpoint.endpoint.id }}"
+
+- name: Copy file glance-api-paste.ini
+  become: true
+  become_user: root
+  ansible.builtin.copy:
+    src: /opt/openstack/git/glance/etc/glance-api-paste.ini
+    remote_src: true
+    dest: /etc/glance/glance-api-paste.ini
+    owner: glance
+    group: glance
+    mode: '0440'
+
+- name: Creates directory /var/lib/glance/images/
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /var/lib/glance/images/
+    state: directory
+    owner: glance
+    group: glance
+  
+- name: Exec glance-manage db_sync
+  become: true
+  become_user: root 
+  command: /opt/openstack/glance/bin/glance-manage db_sync
+
+- name: Create /lib/systemd/system/glance-api.service file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/glance-api.service"
+    dest: /lib/systemd/system/glance-api.service
+    owner: root
+    group: root
+    mode: '0444'
+
+- name: Start glance-api Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: glance-api
+    state: started
+    enabled: true

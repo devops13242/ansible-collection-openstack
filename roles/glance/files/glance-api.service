@@ -1,0 +1,15 @@
+[Unit]
+Description=glance
+After=network-online.target local-fs.target remote-fs.target 
+Wants=network-online.target 
+
+[Service]
+User=glance
+Group=glance
+Type=simple
+ExecStart=/opt/openstack/glance/bin/glance-api
+Restart=on-failure
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
