@@ -1,0 +1,27 @@
+---
+- name: Install rabbitmq-server
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: rabbitmq-server
+    state: present
+
+- name: Start rabbitmq-server Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: rabbitmq-server
+    state: started
+    enabled: true
+
+- name: Add rabbitmq user
+  become: true
+  become_user: root
+  community.rabbitmq.rabbitmq_user:
+    user: "{{ RABBITMQ_DEFAULT_USER }}"
+    password: "{{ RABBITMQ_DEFAULT_PASSWORD }}"
+    vhost: /
+    configure_priv: .*
+    read_priv: .*
+    write_priv: .*
+    state: present

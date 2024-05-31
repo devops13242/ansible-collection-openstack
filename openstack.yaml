@@ -32,3 +32,4 @@
     - role: git
     - role: keystone
     - role: glance
+    - role: rabbitmq
