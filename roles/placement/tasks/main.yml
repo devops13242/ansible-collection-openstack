@@ -1,0 +1,159 @@
+---
+- name: Add group placement
+  become: true
+  become_user: root
+  ansible.builtin.group:
+    name: placement
+    state: present
+
+- name: Add the user placement
+  become: true
+  become_user: root
+  ansible.builtin.user:
+    name: placement
+    group: placement
+    system: true
+
+- name: Git checkout placement
+  become: true
+  become_user: root
+  ansible.builtin.git:
+    repo: https://github.com/openstack/placement.git
+    dest: /opt/openstack/git/placement
+    version: 11.0.0
+
+- name: install dependencies
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/placement
+    requirements: /opt/openstack/git/placement/requirements.txt
+
+- name: install python packages
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/placement
+    name:
+      - PyMySQL
+      - uwsgi
+
+- name: Install placement
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    name: git+https://github.com/openstack/placement.git@11.0.0
+    virtualenv: /opt/openstack/placement
+
+- name: Create a new database with name 'placement'
+  community.mysql.mysql_db:
+    name: placement
+    state: present
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+  retries: 3
+  delay: 3
+
+- name: Create a 'placement'@'localhost' user
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'localhost' IDENTIFIED BY '{{ PLACEMENT_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a 'placement'@'%' user with password
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY '{{ PLACEMENT_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Flush privileges for placement
+  community.mysql.mysql_query:
+    query: "FLUSH PRIVILEGES;"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a user placement
+  openstack.cloud.identity_user:
+    state: present
+    name: placement
+    password: "{{ PLACEMENT_USER_PASSWORD }}"
+    domain: default
+
+- name: Grant an admin role on the user placement in the project service
+  openstack.cloud.role_assignment:
+    user: placement
+    role: admin
+    project: service
+
+- name: Create a service for placement
+  openstack.cloud.catalog_service:
+     state: present
+     name: placement
+     type: placement
+     description: Placement API
+
+- name: Create the Placement service public
+  openstack.cloud.endpoint:
+     service: placement
+     endpoint_interface: public
+     url: http://localhost:8778
+     region: RegionOne
+     state: present
+
+- name: Create the Placement service internal
+  openstack.cloud.endpoint:
+     service: placement
+     endpoint_interface: internal
+     url: http://localhost:8778
+     region: RegionOne
+     state: present
+
+- name: Create the Placement service admin
+  openstack.cloud.endpoint:
+     service: placement
+     endpoint_interface: admin
+     url: http://localhost:8778
+     region: RegionOne
+     state: present
+
+- name: Creates directory /etc/placement
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /etc/placement
+    state: directory
+
+- name: Create /etc/placement/placement.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/placement.conf"
+    dest: /etc/placement/placement.conf
+    mode: '0444'
+
+- name: Exec placement-manage db sync
+  become: true
+  become_user: root 
+  command: /opt/openstack/placement/bin/placement-manage db sync
+
+- name: Create /lib/systemd/system/placement-api.service file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/placement-api.service"
+    dest: /lib/systemd/system/placement-api.service
+    owner: root
+    group: root
+    mode: '0444'
+
+- name: Start placement-api Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: placement-api
+    state: started
+    enabled: true

@@ -1,0 +1,15 @@
+[Unit]
+Description=placement
+After=network-online.target local-fs.target remote-fs.target 
+Wants=network-online.target 
+
+[Service]
+User=placement
+Group=placement
+Type=simple
+ExecStart=/opt/openstack/placement/bin/uwsgi -M --http :8778 --wsgi-file /opt/openstack/placement/bin/placement-api --processes 2 --threads 10
+Restart=on-failure
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

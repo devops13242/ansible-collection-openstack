@@ -33,3 +33,4 @@
     - role: keystone
     - role: glance
     - role: rabbitmq
+    - role: placement
