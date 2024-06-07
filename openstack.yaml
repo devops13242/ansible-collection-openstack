@@ -34,3 +34,6 @@
     - role: glance
     - role: rabbitmq
     - role: placement
+    - role: libvirt
+    - role: nova
+

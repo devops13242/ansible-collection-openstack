@@ -1,0 +1,284 @@
+---
+- name: Add group nova
+  become: true
+  become_user: root
+  ansible.builtin.group:
+    name: nova
+    state: present
+
+- name: Add the user nova
+  become: true
+  become_user: root
+  ansible.builtin.user:
+    name: nova
+    group: nova
+    groups: libvirt
+    append: yes
+    system: true
+
+- name: Install packages
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - libvirt-dev
+    - pkg-config
+
+- name: Git checkout nova
+  become: true
+  become_user: root
+  ansible.builtin.git:
+    repo: https://github.com/openstack/nova.git
+    dest: /opt/openstack/git/nova
+    version: 28.1.0
+
+- name: install sqlalchemy<2.0
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    name: sqlalchemy<2.0
+    virtualenv: /opt/openstack/nova
+
+- name: install dependencies
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/nova
+    requirements: /opt/openstack/git/nova/requirements.txt
+
+- name: install python packages
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/nova
+    name:
+      - PyMySQL
+      - libvirt-python
+
+- name: Install nova
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    name: git+https://github.com/openstack/nova.git@28.1.0
+    virtualenv: /opt/openstack/nova
+
+- name: "Create a new database {{ item }}"
+  community.mysql.mysql_db:
+    name: "{{ item }}"
+    state: present
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+  with_items:
+    - nova_api
+    - nova
+    - nova_cell0
+
+- name: "Grant access to the database {{ item }}.* to 'nova'@'localhost'" 
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON {{ item }}.* TO 'nova'@'localhost' IDENTIFIED BY '{{ NOVA_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+  with_items:
+    - nova_api
+    - nova
+    - nova_cell0
+
+- name: "Grant access to the database {{ item }}.* to 'nova'@'%'" 
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON {{ item }}.* TO 'nova'@'%' IDENTIFIED BY '{{ NOVA_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+  with_items:
+    - nova_api
+    - nova
+    - nova_cell0
+
+- name: Flush privileges for nova
+  community.mysql.mysql_query:
+    query: "FLUSH PRIVILEGES;"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Create a user nova
+  openstack.cloud.identity_user:
+    state: present
+    name: nova
+    password: "{{ NOVA_USER_PASSWORD }}"
+    domain: default
+
+- name: Grant an admin role on the user nova in the project service
+  openstack.cloud.role_assignment:
+    user: nova
+    role: admin
+    project: service
+
+- name: Create a service for nova
+  openstack.cloud.catalog_service:
+     state: present
+     name: nova
+     type: compute
+     description: Openstack Compute
+
+- name: Create the compute service public
+  openstack.cloud.endpoint:
+     service: nova
+     endpoint_interface: public
+     url: http://localhost:8774/v2.1
+     region: RegionOne
+     state: present
+
+- name: Create the compute service internal
+  openstack.cloud.endpoint:
+     service: nova
+     endpoint_interface: internal
+     url: http://localhost:8774/v2.1
+     region: RegionOne
+     state: present
+
+- name: Create the compute service admin
+  openstack.cloud.endpoint:
+     service: nova
+     endpoint_interface: admin
+     url: http://localhost:8774/v2.1
+     region: RegionOne
+     state: present
+
+- name: Creates directory /etc/nova
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /etc/nova
+    state: directory
+    owner: nova
+    group: nova
+    mode: '0770'
+
+- name: Create nova.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/nova.conf"
+    dest: /etc/nova/nova.conf
+    mode: '0444'
+
+- name: Create nova-compute.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/nova-compute.conf"
+    dest: /etc/nova/nova-compute.conf
+    mode: '0444'
+
+- name: Copy file /etc/nova/api-paste.ini
+  become: true
+  become_user: root
+  ansible.builtin.copy:
+    src: /opt/openstack/git/nova/etc/nova/api-paste.ini
+    remote_src: true
+    dest: /etc/nova/api-paste.ini
+    owner: nova
+    group: nova
+    mode: '0440'
+
+- name: Exec nova-manage api_db sync
+  become: true
+  become_user: root 
+  command: /opt/openstack/nova/bin/nova-manage api_db sync
+
+- name: Exec nova-manage cell_v2 map_cell0
+  become: true
+  become_user: root 
+  command: /opt/openstack/nova/bin/nova-manage cell_v2 map_cell0
+
+- name: Check is cell1 exists
+  become: true
+  become_user: root
+  command: /opt/openstack/nova/bin/nova-manage cell_v2 list_cells
+  register: cell1_result
+
+
+- name: Exec  nova-manage cell_v2 create_cell --name=cell1 --verbose
+  become: true
+  become_user: root 
+  command: /opt/openstack/nova/bin/nova-manage cell_v2 create_cell --name=cell1 --verbose
+  when: '"cell1" not in cell1_result.stdout'
+
+- name: Exec nova-manage db sync
+  become: true
+  become_user: root 
+  command: /opt/openstack/nova/bin/nova-manage db sync
+
+- name: uuidgen > /etc/nova/compute_id
+  become: true
+  become_user: root 
+  command: uuidgen > /etc/nova/compute_id
+
+- name: Creates directory /var/lib/nova/instances
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /var/lib/nova/instances
+    state: directory
+    owner: nova
+    group: nova
+    mode: '0770'
+
+- name: Check /etc/nova/compute_id exists
+  become: true
+  become_user: root
+  stat:
+    path: /etc/nova/compute_id
+  register: compute_id_stat_result
+
+- name: Run uuidgen
+  become: true
+  become_user: root
+  command: uuidgen
+  register: uuid_compute_id
+  when: not compute_id_stat_result.stat.exists
+
+- name: Create file if not exists /etc/nova/compute_id
+  become: true
+  become_user: root
+  copy:
+    dest: /etc/nova/compute_id
+    content: "{{ uuid_compute_id.stdout }}"
+  when: not compute_id_stat_result.stat.exists
+
+- name: Create nova service file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/nova.service"
+    dest: "/lib/systemd/system/{{ item }}.service"
+    owner: root
+    group: root
+    mode: '0444'
+  vars:
+    NAME: "{{ item }}"
+  with_items:
+    - nova-api
+    - nova-scheduler
+    - nova-conductor
+    - nova-novncproxy
+    - nova-compute
+
+- name: Start nova Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+    - nova-api
+    - nova-scheduler
+    - nova-conductor
+    - nova-novncproxy
+    - nova-compute

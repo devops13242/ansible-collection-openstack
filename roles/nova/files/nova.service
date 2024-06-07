@@ -1,0 +1,15 @@
+[Unit]
+Description={{ NAME }}
+After=network-online.target local-fs.target remote-fs.target 
+Wants=network-online.target 
+
+[Service]
+User=nova
+Group=nova
+Type=simple
+ExecStart=/opt/openstack/nova/bin/python3 /opt/openstack/nova/bin/{{ NAME }}
+Restart=on-failure
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

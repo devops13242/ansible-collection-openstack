@@ -5,6 +5,15 @@
   apt:
     upgrade: "yes"
     update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Update packages
+  become: true
+  become_user: root
+  dnf:
+    update_only: true
+    update_cache: true
+  when: ansible_os_family == 'RedHat'
 
 - name: Install python packages
   become: true
@@ -15,6 +24,7 @@
   with_items:
     - python3-openstackclient
     - python3-openstacksdk
+    - python3-pexpect
 
 - name: Set environment variable OS_USERNAME
   ansible.builtin.lineinfile:

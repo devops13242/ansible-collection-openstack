@@ -20,7 +20,16 @@
   ansible.builtin.package:
     name: python3-pymysql
     state: present
+  when: ansible_os_family == 'Debian'
 
+- name: Install python3-PyMySQL
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: python3-PyMySQL
+    state: present
+  when: ansible_os_family == 'RedHat'
+  
 - name: Create a new database with name 'keystone'
   community.mysql.mysql_db:
     name: keystone
@@ -59,6 +68,13 @@
     repo: https://github.com/openstack/keystone.git
     dest: /opt/openstack/git/keystone
     version: 25.0.0
+
+- name: Install gcc
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: gcc
+    state: present
 
 - name: install dependencies
   become: true
@@ -151,7 +167,7 @@
   become_user: root
   ansible.builtin.service:
     name: apache2
-    state: started
+    state: restarted
     enabled: true
 
 - name: Create a domain example
