@@ -36,4 +36,5 @@
     - role: placement
     - role: libvirt
     - role: nova
+    - role: neutron
 

@@ -1,0 +1,210 @@
+---
+- name: Add group neutron
+  become: true
+  become_user: root
+  ansible.builtin.group:
+    name: neutron
+    state: present
+
+- name: Add the user neutron
+  become: true
+  become_user: root
+  ansible.builtin.user:
+    name: neutron
+    group: neutron
+    append: yes
+    system: true
+
+- name: Create a new database with name 'neutron'
+  community.mysql.mysql_db:
+    name: neutron
+    state: present
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Grant access to the database neutron.* to 'neutron'@'localhost'
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'localhost' IDENTIFIED BY '{{ NEUTRON_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Grant access to the database neutron.* to 'neutron'@'%'
+  community.mysql.mysql_query:
+    query: "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY '{{ NEUTRON_DB_PASSWORD }}';"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Flush privileges for neutron
+  community.mysql.mysql_query:
+    query: "FLUSH PRIVILEGES;"
+    login_host: 127.0.0.1
+    login_user: root
+    login_password: "{{ MARIADB_ROOT_PASSWORD }}"
+
+- name: Git checkout neutron
+  become: true
+  become_user: root
+  ansible.builtin.git:
+    repo: https://github.com/openstack/neutron.git
+    dest: /opt/openstack/git/neutron
+    version: 24.0.0
+
+- name: install dependencies
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/neutron
+    requirements: /opt/openstack/git/neutron/requirements.txt
+
+- name: install python packages
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    virtualenv: /opt/openstack/neutron
+    name:
+      - PyMySQL
+
+- name: Install neutron
+  become: true
+  become_user: root
+  ansible.builtin.pip:
+    name: git+https://github.com/openstack/neutron.git@24.0.0
+    virtualenv: /opt/openstack/neutron
+
+- name: Create a user neutron
+  openstack.cloud.identity_user:
+    state: present
+    name: neutron
+    password: "{{ NEUTRON_USER_PASSWORD }}"
+    domain: default
+
+- name: Grant an admin role on the user neutron in the project service
+  openstack.cloud.role_assignment:
+    user: neutron
+    role: admin
+    project: service
+
+- name: Create a service for neutron
+  openstack.cloud.catalog_service:
+     state: present
+     name: neutron
+     type: network
+     description: Openstack Networking
+
+- name: Create the neutron service public
+  openstack.cloud.endpoint:
+     service: neutron
+     endpoint_interface: public
+     url: http://localhost:9696
+     region: RegionOne
+     state: present
+
+- name: Create the neutron service internal
+  openstack.cloud.endpoint:
+     service: neutron
+     endpoint_interface: internal
+     url: http://localhost:9696
+     region: RegionOne
+     state: present
+
+- name: Create the neutron service admin
+  openstack.cloud.endpoint:
+     service: neutron
+     endpoint_interface: admin
+     url: http://localhost:9696
+     region: RegionOne
+     state: present
+
+- name: Creates directory /etc/neutron/plugins/ml2
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /etc/neutron/plugins/ml2
+    state: directory
+    owner: nova
+    group: nova
+    mode: '0770'
+
+- name: Create metadata_agent.ini file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/metadata_agent.ini"
+    dest: /etc/neutron/metadata_agent.ini
+    mode: '0444'
+
+- name: Create neutron.conf file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/neutron.conf"
+    dest: /etc/neutron/neutron.conf
+    mode: '0444'
+
+- name: Create ml2_conf.ini file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/ml2_conf.ini"
+    dest: /etc/neutron/plugins/ml2/ml2_conf.ini
+    mode: '0444'
+
+- name: Copy file /etc/neutron/api-paste.ini
+  become: true
+  become_user: root
+  ansible.builtin.copy:
+    src: /opt/openstack/git/neutron/etc/api-paste.ini
+    remote_src: true
+    dest: /etc/neutron/api-paste.ini
+    owner: neutron
+    group: neutron
+    mode: '0440'
+
+- name: Creates directory /var/lib/neutron
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: /var/lib/neutron
+    state: directory
+    owner: neutron
+    group: neutron
+    mode: '0770'
+
+- name: Exec neutron-db-manage
+  become: true
+  become_user: root 
+  command: /opt/openstack/neutron/bin/neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head
+
+- name: Create neutron service file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/neutron.service"
+    dest: "/lib/systemd/system/{{ item }}.service"
+    owner: root
+    group: root
+    mode: '0444'
+  vars:
+    NAME: "{{ item }}"
+  with_items:
+    - neutron-openvswitch-agent
+    - neutron-dhcp-agent
+    - neutron-metadata-agent
+    - neutron-l3-agent
+
+- name: Start neutron Service
+  become: true
+  become_user: root
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+    - neutron-openvswitch-agent
+    - neutron-dhcp-agent
+    - neutron-metadata-agent
+    - neutron-l3-agent
+
