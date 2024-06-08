@@ -124,8 +124,8 @@
   ansible.builtin.file:
     path: /etc/neutron/plugins/ml2
     state: directory
-    owner: nova
-    group: nova
+    owner: neutron
+    group: neutron
     mode: '0770'
 
 - name: Create metadata_agent.ini file
