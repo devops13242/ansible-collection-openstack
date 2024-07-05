@@ -202,6 +202,7 @@
     - neutron-openvswitch-agent
     - neutron-dhcp-agent
     - neutron-metadata-agent
+    - neutron-server
 
 - name: Create neutron-l3-agent service file
   become: true
@@ -225,4 +226,6 @@
     - neutron-dhcp-agent
     - neutron-metadata-agent
     - neutron-l3-agent
+    - neutron-server
+
 
