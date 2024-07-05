@@ -152,6 +152,15 @@
     dest: /etc/neutron/plugins/ml2/ml2_conf.ini
     mode: '0444'
 
+- name: Create l3_agent.ini file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/l3_agent.ini"
+    dest: /etc/neutron/l3_agent.ini
+    mode: '0444'
+
+
 - name: Copy file /etc/neutron/api-paste.ini
   become: true
   become_user: root
@@ -193,7 +202,16 @@
     - neutron-openvswitch-agent
     - neutron-dhcp-agent
     - neutron-metadata-agent
-    - neutron-l3-agent
+
+- name: Create neutron-l3-agent service file
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: "{{ role_path }}/files/neutron-l3-agent.service"
+    dest: "/lib/systemd/system/neutron-l3-agent.service"
+    owner: root
+    group: root
+    mode: '0444'
 
 - name: Start neutron Service
   become: true

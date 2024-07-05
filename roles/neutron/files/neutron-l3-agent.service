@@ -1,0 +1,15 @@
+[Unit]
+Description=neutron-l3-agent
+After=network-online.target local-fs.target remote-fs.target 
+Wants=network-online.target 
+
+[Service]
+User=neutron
+Group=neutron
+Type=simple
+ExecStart=/opt/openstack/neutron/bin/python3 /opt/openstack/neutron/bin/neutron-l3-agent --config-file=/etc/neutron/l3_agent.ini
+Restart=on-failure
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
